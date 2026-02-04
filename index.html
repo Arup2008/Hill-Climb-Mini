@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hill Climb Mini</title>
+<style>
+body{margin:0;overflow:hidden;background:#87ceeb}
+canvas{display:block}
+#ui{position:fixed;top:10px;left:10px;color:#fff;font-size:16px}
+.btn{
+ position:fixed;bottom:20px;width:80px;height:80px;
+ border-radius:50%;background:rgba(0,0,0,.5);
+ color:#fff;font-size:18px;text-align:center;
+ line-height:80px;user-select:none
+}
+#gas{right:20px} #brake{left:20px}
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="ui">
+Fuel: <span id="fuel">100</span> |
+Score: <span id="score">0</span> |
+Coins: <span id="coins">0</span>
+</div>
+
+<div class="btn" id="brake">BRAKE</div>
+<div class="btn" id="gas">GAS</div>
+
+<script>
+const c=document.getElementById("game"),ctx=c.getContext("2d");
+c.width=innerWidth;c.height=innerHeight;
+
+let gas=false,brake=false;
+document.getElementById("gas").ontouchstart=()=>gas=true;
+document.getElementById("gas").ontouchend=()=>gas=false;
+document.getElementById("brake").ontouchstart=()=>brake=true;
+document.getElementById("brake").ontouchend=()=>brake=false;
+
+// SAVE
+let totalCoins=parseInt(localStorage.getItem("TOTAL_COINS")||"0");
+
+// CAR
+let car={x:150,y:0,speed:0,angle:0};
+let fuel=100,score=0,cameraX=0;
+
+// WORLD
+let coins=[],fuelTank=null,lastCoinX=0;
+
+// GROUND
+function groundY(x){
+ return c.height-120
+ -Math.sin(x*0.004)*60
+ -Math.sin(x*0.01)*30;
+}
+
+// SPAWN
+function spawnCoins(){
+ if(car.x-lastCoinX>250){
+  lastCoinX=car.x;
+  coins.push({x:car.x+600,collected:false});
+ }
+}
+function spawnFuel(){
+ if(fuel<=10 && !fuelTank){
+  fuelTank={x:car.x+700};
+ }
+}
+
+// LOOP
+function loop(){
+ ctx.clearRect(0,0,c.width,c.height);
+
+ // control
+ if(gas && fuel>0){car.speed+=0.15;fuel-=0.06}
+ if(brake) car.speed-=0.1;
+ car.speed*=0.98;
+ car.x+=car.speed;
+ cameraX=car.x-150;
+
+ // physics
+ let gy=groundY(car.x);
+ car.y=gy-20;
+ let g1=groundY(car.x-5),g2=groundY(car.x+5);
+ car.angle=Math.atan2(g2-g1,10);
+ if(Math.abs(car.angle)>1.2){alert("Game Over");location.reload();}
+
+ spawnCoins(); spawnFuel();
+
+ // ground draw
+ ctx.fillStyle="#2e5c20";
+ ctx.beginPath();ctx.moveTo(0,c.height);
+ for(let i=0;i<c.width;i++) ctx.lineTo(i,groundY(i+cameraX));
+ ctx.lineTo(c.width,c.height);ctx.fill();
+
+ // coins
+ ctx.fillStyle="gold";
+ coins=coins.filter(o=>o.x>car.x-200);
+ coins.forEach(o=>{
+  let sx=o.x-cameraX, sy=groundY(o.x)-40;
+  if(!o.collected && Math.abs(car.x-o.x)<25){
+   o.collected=true;
+   totalCoins++; score+=50;
+   localStorage.setItem("TOTAL_COINS",totalCoins);
+  }
+  if(!o.collected && sx>-20 && sx<c.width+20){
+   ctx.beginPath();ctx.arc(sx,sy,8,0,Math.PI*2);ctx.fill();
+  }
+ });
+
+ // fuel tank
+ if(fuelTank){
+  let sx=fuelTank.x-cameraX, sy=groundY(fuelTank.x)-45;
+  if(Math.abs(car.x-fuelTank.x)<30){
+   fuel=100; fuelTank=null;
+  }
+  if(sx>-30 && sx<c.width+30){
+   ctx.fillStyle="orange";
+   ctx.fillRect(sx-12,sy-15,24,25);
+   ctx.fillStyle="black";
+   ctx.fillRect(sx-5,sy-22,10,7);
+  }
+ }
+
+ // ===== NEW CAR DESIGN =====
+ ctx.save();
+ ctx.translate(car.x-cameraX,car.y);
+ ctx.rotate(car.angle);
+
+ // wheels
+ ctx.fillStyle="#111";
+ ctx.beginPath();
+ ctx.arc(-22,18,9,0,Math.PI*2);
+ ctx.arc(22,18,9,0,Math.PI*2);
+ ctx.fill();
+
+ // body
+ ctx.fillStyle="#c62828";
+ ctx.fillRect(-32,-8,64,22);
+
+ // top
+ ctx.fillStyle="#e53935";
+ ctx.fillRect(-15,-22,30,14);
+
+ // window
+ ctx.fillStyle="#90caf9";
+ ctx.fillRect(-10,-20,20,10);
+
+ ctx.restore();
+ // ==========================
+
+ score+=Math.max(car.speed,0);
+
+ fuel=Math.max(fuel,0);
+ document.getElementById("fuel").innerText=fuel.toFixed(0);
+ document.getElementById("score").innerText=score.toFixed(0);
+ document.getElementById("coins").innerText=totalCoins;
+
+ if(fuel<=0){alert("Fuel Empty");location.reload();}
+ requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
