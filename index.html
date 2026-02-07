@@ -3,166 +3,375 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Hill Climb Mini</title>
+<title>Hill Climb Mini - Final Fix</title>
 <style>
-body{margin:0;overflow:hidden;background:#87ceeb}
-canvas{display:block}
-#ui{position:fixed;top:10px;left:10px;color:#fff;font-size:16px}
-.btn{
- position:fixed;bottom:20px;width:80px;height:80px;
- border-radius:50%;background:rgba(0,0,0,.5);
- color:#fff;font-size:18px;text-align:center;
- line-height:80px;user-select:none
-}
-#gas{right:20px} #brake{left:20px}
+  body { margin:0; overflow:hidden; background:#87ceeb; font-family: Arial, sans-serif; }
+  canvas { display:block; }
+  #ui { position:fixed; top:10px; left:10px; color:#fff; font-size:18px; z-index:10; display:none; background:rgba(0,0,0,0.4); padding:8px 14px; border-radius:8px; }
+  #speedometer { position:fixed; top:10px; right:20px; width:140px; height:140px; z-index:10; display:none; background:rgba(0,0,0,0.4); border-radius:50%; box-shadow:0 0 20px rgba(0,0,0,0.5); text-align:center; color:white; font-size:28px; line-height:140px; font-weight:bold; }
+  #heat-bar-container { position:fixed; top:160px; right:20px; width:140px; z-index:10; display:none; }
+  #heat-label { color:white; font-size:14px; text-align:center; margin-bottom:4px; }
+  #heat-bar { height:20px; background:#333; border-radius:10px; overflow:hidden; border:2px solid #555; }
+  #heat-fill { height:100%; width:0%; background:linear-gradient(to right, #00ff00, #ffff00, #ff8800, #ff0000); transition: width 0.3s ease; }
+  .btn { position:fixed; bottom:20px; width:90px; height:90px; border-radius:50%; background:rgba(0,0,0,.6); color:#fff; font-size:20px; text-align:center; line-height:90px; user-select:none; z-index:10; }
+  #gas { right:25px; }
+  #brake { left:25px; }
+  #start-screen, #gameover-screen, #shop-screen { position: fixed; inset: 0; background: rgba(0,0,0,0.75); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 3rem; z-index: 100; }
+  #start-btn, #restart-btn, #shop-btn, #back-btn { padding: 20px 80px; font-size: 2.5rem; border-radius: 25px; border: none; color: white; cursor: pointer; margin: 15px; }
+  #start-btn, #back-btn { background: #4caf50; }
+  #shop-btn { background: #ff9800; }
+  #restart-btn { background: #ff5722; }
+  #gameover-title { font-size: 5rem; margin:0; text-shadow:4px 4px 10px #000; }
+  #shop-screen { z-index:101; }
+  #shop-header { position:absolute; top:20px; left:20px; right:20px; display:flex; justify-content:space-between; font-size:2rem; }
+  #shop-coins { color:gold; }
+  #shop-list { flex:1; overflow-y:auto; width:90%; max-height:60vh; padding:20px; margin:50px 0 20px; }
+  .car-item { display:flex; align-items:center; padding:20px; margin:15px 0; border:2px solid #fff; border-radius:15px; background:rgba(255,255,255,0.1); }
+  .car-preview { width:120px; height:80px; border-radius:12px; margin-right:25px; box-shadow:0 6px 15px rgba(0,0,0,0.5); }
+  .car-info h3 { margin:0 0 8px 0; font-size:1.6rem; }
+  .car-buy-btn, .car-select-btn { padding:10px 25px; font-size:1.1rem; border:none; border-radius:12px; color:white; }
+  .car-buy-btn { background:#ff5722; }
+  .car-select-btn { background:#4caf50; }
 </style>
 </head>
 <body>
 
 <canvas id="game"></canvas>
-
-<div id="ui">
-Fuel: <span id="fuel">100</span> |
-Score: <span id="score">0</span> |
-Coins: <span id="coins">0</span>
-</div>
-
+<div id="ui">Fuel: <span id="fuel">100</span> | Score: <span id="score">0</span> | Coins: <span id="coins">0</span></div>
+<div id="speedometer">0</div>
+<div id="heat-bar-container"><div id="heat-label">ENGINE HEAT</div><div id="heat-bar"><div id="heat-fill"></div></div></div>
 <div class="btn" id="brake">BRAKE</div>
 <div class="btn" id="gas">GAS</div>
 
+<div id="start-screen">
+  <div>Hill Climb Mini</div>
+  <button id="start-btn">START</button>
+  <button id="shop-btn">🛒 SHOP</button>
+</div>
+
+<div id="gameover-screen" style="display:none;">
+  <div id="gameover-title">GAME OVER</div>
+  <div id="gameover-score">Score: <span id="final-score">0</span></div>
+  <button id="restart-btn">RESTART</button>
+</div>
+
+<div id="shop-screen" style="display:none;">
+  <div id="shop-header"><div>Garage Shop</div><div id="shop-coins">Coins: 0</div><div onclick="closeShop()">X</div></div>
+  <div id="shop-list"></div>
+  <button id="back-btn" onclick="closeShop()">BACK</button>
+</div>
+
 <script>
-const c=document.getElementById("game"),ctx=c.getContext("2d");
-c.width=innerWidth;c.height=innerHeight;
+const c = document.getElementById("game");
+const ctx = c.getContext("2d");
+c.width = innerWidth;
+c.height = innerHeight;
 
-let gas=false,brake=false;
-document.getElementById("gas").ontouchstart=()=>gas=true;
-document.getElementById("gas").ontouchend=()=>gas=false;
-document.getElementById("brake").ontouchstart=()=>brake=true;
-document.getElementById("brake").ontouchend=()=>brake=false;
+let gameStarted = false, gameOver = false;
+let gas = false, brake = false;
 
-// SAVE
-let totalCoins=parseInt(localStorage.getItem("TOTAL_COINS")||"0");
+// Touch Controls
+const setGas = (s) => { if(!gameOver) gas = s; };
+const setBrake = (s) => { if(!gameOver) brake = s; };
+document.getElementById("gas").ontouchstart = () => setGas(true);
+document.getElementById("gas").ontouchend = () => setGas(false);
+document.getElementById("brake").ontouchstart = () => setBrake(true);
+document.getElementById("brake").ontouchend = () => setBrake(false);
+document.getElementById("gas").onmousedown = () => setGas(true);
+document.getElementById("gas").onmouseup = () => setGas(false);
+document.getElementById("brake").onmousedown = () => setBrake(true);
+document.getElementById("brake").onmouseup = () => setBrake(false);
 
-// CAR
-let car={x:150,y:0,speed:0,angle:0};
-let fuel=100,score=0,cameraX=0;
+const startScreen = document.getElementById("start-screen");
+const gameoverScreen = document.getElementById("gameover-screen");
+const shopScreen = document.getElementById("shop-screen");
+const ui = document.getElementById("ui");
+const speedo = document.getElementById("speedometer");
+const heatFill = document.getElementById("heat-fill");
+const heatContainer = document.getElementById("heat-bar-container");
 
-// WORLD
-let coins=[],fuelTank=null,lastCoinX=0;
+let totalCoins = parseInt(localStorage.getItem("TOTAL_COINS") || "0");
+let ownedCars = JSON.parse(localStorage.getItem("ownedCars") || "[]");
 
-// GROUND
-function groundY(x){
- return c.height-120
- -Math.sin(x*0.004)*60
- -Math.sin(x*0.01)*30;
+const cars = [
+  { name: 'Default Red', price: 0, color: '#c62828', topColor: '#e53935' },
+  { name: 'Blue Monster', price: 500, color: '#2196f3', topColor: '#42a5f5' },
+  { name: 'Green Sports', price: 1000, color: '#4caf50', topColor: '#66bb6a' },
+  { name: 'Yellow Offroad', price: 1500, color: '#ffeb3b', topColor: '#fdd835' },
+  { name: 'Purple SUV', price: 2000, color: '#9c27b0', topColor: '#ab47bc' }
+];
+
+const carSpecs = [
+  { wheelR:10, bodyW:70, bodyH:25, topW:36, topH:16, wheelOffset:25, groundOffset:10 },
+  { wheelR:12, bodyW:75, bodyH:28, topW:40, topH:18, wheelOffset:27, groundOffset:12 },
+  { wheelR:9, bodyW:60, bodyH:22, topW:32, topH:14, wheelOffset:22, groundOffset:9 },
+  { wheelR:11, bodyW:72, bodyH:26, topW:38, topH:17, wheelOffset:26, groundOffset:11 },
+  { wheelR:10, bodyW:80, bodyH:27, topW:42, topH:17, wheelOffset:28, groundOffset:10 }
+];
+
+let currentCar = parseInt(localStorage.getItem("currentCar") || "0");
+if (currentCar >= cars.length || (cars[currentCar].price > 0 && !ownedCars.includes(currentCar))) currentCar = 0;
+
+function saveData() {
+  localStorage.setItem("TOTAL_COINS", totalCoins);
+  localStorage.setItem("ownedCars", JSON.stringify(ownedCars));
+  localStorage.setItem("currentCar", currentCar);
 }
 
-// SPAWN
-function spawnCoins(){
- if(car.x-lastCoinX>250){
-  lastCoinX=car.x;
-  coins.push({x:car.x+600,collected:false});
- }
+document.getElementById("coins").innerText = totalCoins;
+
+document.getElementById("start-btn").onclick = () => {
+  gameStarted = true;
+  startScreen.style.display = "none";
+  ui.style.display = "block";
+  speedo.style.display = "block";
+  heatContainer.style.display = "block";
+  resetGame();
+  loop();
+};
+
+document.getElementById("restart-btn").onclick = () => {
+  resetGame();
+  gameoverScreen.style.display = "none";
+  ui.style.display = "block";
+  speedo.style.display = "block";
+  heatContainer.style.display = "block";
+  gameOver = false;
+  loop();
+};
+
+document.getElementById("shop-btn").onclick = showShop;
+
+function showShop() {
+  startScreen.style.display = "none";
+  shopScreen.style.display = "flex";
+  document.getElementById("shop-coins").innerText = `Coins: ${totalCoins}`;
+  populateShop();
 }
-function spawnFuel(){
- if(fuel<=10 && !fuelTank){
-  fuelTank={x:car.x+700};
- }
+
+function populateShop() {
+  let list = document.getElementById("shop-list");
+  list.innerHTML = "";
+  cars.forEach((car, i) => {
+    let div = document.createElement("div");
+    div.className = "car-item";
+    let isOwned = ownedCars.includes(i) || car.price === 0;
+    let btnText = isOwned ? (i === currentCar ? "SELECTED" : "SELECT") : `BUY (${car.price})`;
+    let btnClass = isOwned ? "car-select-btn" : "car-buy-btn";
+    let disabled = isOwned && i === currentCar ? "disabled" : "";
+    div.innerHTML = `
+      <div class="car-preview" style="background:${car.color};"></div>
+      <div class="car-info">
+        <h3>${car.name}</h3>
+        <p style="color:gold">${isOwned ? (i === currentCar ? "Selected" : "Owned") : `${car.price} Coins`}</p>
+        <button class="${btnClass}" ${disabled} onclick="${isOwned ? `selectCar(${i})` : `buyCar(${i})`}">${btnText}</button>
+      </div>`;
+    list.appendChild(div);
+  });
 }
 
-// LOOP
-function loop(){
- ctx.clearRect(0,0,c.width,c.height);
+window.buyCar = function(i) {
+  if (ownedCars.includes(i) || totalCoins < cars[i].price) return;
+  totalCoins -= cars[i].price;
+  ownedCars.push(i);
+  saveData();
+  document.getElementById("coins").innerText = totalCoins;
+  document.getElementById("shop-coins").innerText = `Coins: ${totalCoins}`;
+  populateShop();
+};
 
- // control
- if(gas && fuel>0){car.speed+=0.15;fuel-=0.06}
- if(brake) car.speed-=0.1;
- car.speed*=0.98;
- car.x+=car.speed;
- cameraX=car.x-150;
+window.selectCar = function(i) {
+  if (!ownedCars.includes(i) && cars[i].price > 0) return;
+  currentCar = i;
+  saveData();
+  populateShop();
+};
 
- // physics
- let gy=groundY(car.x);
- car.y=gy-20;
- let g1=groundY(car.x-5),g2=groundY(car.x+5);
- car.angle=Math.atan2(g2-g1,10);
- if(Math.abs(car.angle)>1.2){alert("Game Over");location.reload();}
+window.closeShop = function() {
+  shopScreen.style.display = "none";
+  startScreen.style.display = "flex";
+};
 
- spawnCoins(); spawnFuel();
+// Game Variables
+let carObj = { x:150, y:0, speed:0, angle:0, falling:false, fallSpeed:0, fallRotation:0 };
+let fuel = 100, score = 0, cameraX = 0;
+let coinsArr = [], fuelTank = null, lastCoinX = 0;
+let cracks = [], warningActive = false, warningTimer = 0, lastCrackX = 0;
+let engineHeat = 0;
 
- // ground draw
- ctx.fillStyle="#2e5c20";
- ctx.beginPath();ctx.moveTo(0,c.height);
- for(let i=0;i<c.width;i++) ctx.lineTo(i,groundY(i+cameraX));
- ctx.lineTo(c.width,c.height);ctx.fill();
+const SAFE_SPEED = 3.8;
+const COLLAPSE_DURATION = 80;
+const CRACK_INTERVAL = 5000;
 
- // coins
- ctx.fillStyle="gold";
- coins=coins.filter(o=>o.x>car.x-200);
- coins.forEach(o=>{
-  let sx=o.x-cameraX, sy=groundY(o.x)-40;
-  if(!o.collected && Math.abs(car.x-o.x)<25){
-   o.collected=true;
-   totalCoins++; score+=50;
-   localStorage.setItem("TOTAL_COINS",totalCoins);
-  }
-  if(!o.collected && sx>-20 && sx<c.width+20){
-   ctx.beginPath();ctx.arc(sx,sy,8,0,Math.PI*2);ctx.fill();
-  }
- });
-
- // fuel tank
- if(fuelTank){
-  let sx=fuelTank.x-cameraX, sy=groundY(fuelTank.x)-45;
-  if(Math.abs(car.x-fuelTank.x)<30){
-   fuel=100; fuelTank=null;
-  }
-  if(sx>-30 && sx<c.width+30){
-   ctx.fillStyle="orange";
-   ctx.fillRect(sx-12,sy-15,24,25);
-   ctx.fillStyle="black";
-   ctx.fillRect(sx-5,sy-22,10,7);
-  }
- }
-
- // ===== NEW CAR DESIGN =====
- ctx.save();
- ctx.translate(car.x-cameraX,car.y);
- ctx.rotate(car.angle);
-
- // wheels
- ctx.fillStyle="#111";
- ctx.beginPath();
- ctx.arc(-22,18,9,0,Math.PI*2);
- ctx.arc(22,18,9,0,Math.PI*2);
- ctx.fill();
-
- // body
- ctx.fillStyle="#c62828";
- ctx.fillRect(-32,-8,64,22);
-
- // top
- ctx.fillStyle="#e53935";
- ctx.fillRect(-15,-22,30,14);
-
- // window
- ctx.fillStyle="#90caf9";
- ctx.fillRect(-10,-20,20,10);
-
- ctx.restore();
- // ==========================
-
- score+=Math.max(car.speed,0);
-
- fuel=Math.max(fuel,0);
- document.getElementById("fuel").innerText=fuel.toFixed(0);
- document.getElementById("score").innerText=score.toFixed(0);
- document.getElementById("coins").innerText=totalCoins;
-
- if(fuel<=0){alert("Fuel Empty");location.reload();}
- requestAnimationFrame(loop);
+function resetGame() {
+  carObj = { x:150, y:0, speed:0, angle:0, falling:false, fallSpeed:0, fallRotation:0 };
+  fuel = 100; score = 0; cameraX = 0;
+  coinsArr = []; fuelTank = null; lastCoinX = 0;
+  cracks = []; lastCrackX = 0;
+  warningActive = false; warningTimer = 0;
+  engineHeat = 0;
+  gameOver = false;
 }
-loop();
+
+function groundY(x) {
+  return c.height - 120 - Math.sin(x*0.004)*60 - Math.sin(x*0.01)*30;
+}
+
+function loop() {
+  if (!gameStarted || gameOver) return;
+  ctx.clearRect(0,0,c.width,c.height);
+
+  // Logic
+  if (carObj.x - lastCrackX >= CRACK_INTERVAL && carObj.x > 2000) {
+    lastCrackX = Math.floor(carObj.x / CRACK_INTERVAL) * CRACK_INTERVAL;
+    cracks.push({ xStart: lastCrackX + CRACK_INTERVAL + 300 + Math.random()*400, width: 220, progress: 0 });
+  }
+
+  for (let crack of cracks) {
+    if (crack.progress === 0) {
+      let dist = carObj.x - crack.xStart;
+      if (dist > -200 && dist < -50 && !warningActive) { warningActive=true; warningTimer=100; }
+      if (dist > -40 && dist < 90 && carObj.speed > SAFE_SPEED) {
+        crack.progress = 1; warningActive = false; carObj.falling = true;
+        carObj.fallSpeed = 0; carObj.fallRotation = 0; carObj.speed *= 0.25;
+      }
+    } else if (crack.progress > 0) {
+      crack.progress++;
+      if (crack.progress >= COLLAPSE_DURATION) {
+        if (Math.abs(carObj.x - crack.xStart) < crack.width/2 + 60) endGame("CRASHED!");
+        crack.progress = -1;
+      }
+    }
+  }
+  cracks = cracks.filter(c => c.progress >= 0);
+
+  // Heat Logic
+  if (carObj.falling) engineHeat = Math.max(0, engineHeat - 0.2);
+  else if (gas && fuel > 0 && carObj.speed > 1) engineHeat += 0.18 * (carObj.speed/5);
+  else engineHeat = Math.max(0, engineHeat - (brake ? 0.25 : 0.12));
+  engineHeat = Math.min(100, engineHeat);
+  
+  heatFill.style.width = engineHeat + "%";
+  heatFill.style.background = engineHeat > 85 ? "red" : (engineHeat > 60 ? "orange" : "#00ff00");
+  if (engineHeat >= 100) endGame("ENGINE OVERHEATED");
+
+  let spec = carSpecs[currentCar];
+  if (!carObj.falling) {
+    if (gas && fuel > 0) { carObj.speed += 0.15; fuel -= 0.06; }
+    if (brake) carObj.speed -= 0.12;
+    carObj.speed *= 0.975;
+    carObj.x += carObj.speed;
+    carObj.y = groundY(carObj.x) - spec.groundOffset;
+    let g1 = groundY(carObj.x-5), g2 = groundY(carObj.x+5);
+    carObj.angle = Math.atan2(g2-g1,10);
+    if (Math.abs(carObj.angle) > 1.2) endGame("FLIPPED!");
+  } else {
+    carObj.fallSpeed += 0.28;
+    carObj.y += carObj.fallSpeed;
+    carObj.fallRotation += 0.04;
+    carObj.x += carObj.speed * 0.6;
+    carObj.angle += carObj.fallRotation * 0.6;
+  }
+  cameraX = carObj.x - 180;
+
+  if (carObj.x - lastCoinX > 250) { lastCoinX = carObj.x; coinsArr.push({x:carObj.x+600, collected:false}); }
+  if (fuel <= 10 && !fuelTank) fuelTank = { x: carObj.x + 700 };
+
+  // Draw Ground
+  ctx.fillStyle = "#2e5c20";
+  ctx.beginPath();
+  ctx.moveTo(0, c.height);
+  for (let i = 0; i <= c.width; i+=5) {
+    let wx = i + cameraX;
+    let y = groundY(wx);
+    for (let crack of cracks) {
+      if (crack.progress > 0 && wx >= crack.xStart && wx <= crack.xStart + crack.width) {
+        let p = Math.min(crack.progress / COLLAPSE_DURATION, 1);
+        let cd = Math.abs(wx - (crack.xStart + crack.width/2));
+        let ff = Math.max(0, 1 - cd / (crack.width/2));
+        y += 350 * p * ff * ff;
+      }
+    }
+    ctx.lineTo(i, y);
+  }
+  ctx.lineTo(c.width, c.height);
+  ctx.fill();
+
+  // Draw Coins
+  ctx.strokeStyle = "#b8860b"; ctx.lineWidth = 2;
+  coinsArr.forEach(coin => {
+    if (coin.collected) return;
+    let cx = coin.x - cameraX, cy = groundY(coin.x) - 40;
+    if (cx > -50 && cx < c.width+50) {
+      ctx.beginPath(); ctx.arc(cx, cy, 12, 0, Math.PI*2); ctx.fillStyle="gold"; ctx.fill(); ctx.stroke();
+      ctx.fillStyle="black"; ctx.font="16px Arial"; ctx.textAlign="center"; ctx.fillText("$", cx, cy+6);
+    }
+    if (Math.abs(carObj.x - coin.x) < 40 && Math.abs(carObj.y - cy) < 60) {
+      coin.collected = true; score += 50; totalCoins += 10; saveData();
+    }
+  });
+
+  // Draw Fuel
+  if (fuelTank) {
+    let fx = fuelTank.x - cameraX, fy = groundY(fuelTank.x) - 30;
+    if (fx > -50 && fx < c.width+50) {
+      ctx.fillStyle="red"; ctx.fillRect(fx-15, fy-20, 30, 40);
+      ctx.fillStyle="white"; ctx.font="bold 20px Arial"; ctx.fillText("F", fx, fy+10);
+    }
+    if (Math.abs(carObj.x - fuelTank.x) < 40) { fuel = 100; fuelTank = null; }
+  }
+
+  // Draw Car
+  ctx.save();
+  ctx.translate(carObj.x - cameraX, carObj.y);
+  ctx.rotate(carObj.angle);
+  ctx.fillStyle = cars[currentCar].color;
+  ctx.fillRect(-spec.bodyW/2, -spec.bodyH, spec.bodyW, spec.bodyH);
+  ctx.fillStyle = cars[currentCar].topColor;
+  ctx.fillRect(-spec.topW/2, -spec.bodyH - spec.topH, spec.topW, spec.topH);
+  ctx.fillStyle = "#333";
+  ctx.beginPath(); ctx.arc(-spec.wheelOffset, 0, spec.wheelR, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(spec.wheelOffset, 0, spec.wheelR, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = "#ccc"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(-spec.wheelOffset, 0, spec.wheelR-3, 0, Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(spec.wheelOffset, 0, spec.wheelR-3, 0, Math.PI*2); ctx.stroke();
+  ctx.restore();
+
+  // Warning
+  if (warningActive && warningTimer > 0) {
+    warningTimer--;
+    let alpha = Math.sin(warningTimer * 0.3) * 0.4 + 0.6;
+    ctx.font = "bold 50px Arial"; ctx.fillStyle = `rgba(255,40,40,${alpha})`; ctx.textAlign = "center";
+    ctx.fillText("SLOW DOWN!", c.width/2, c.height*0.25);
+    ctx.font = "28px Arial"; ctx.fillText(`Speed < ${SAFE_SPEED.toFixed(1)}`, c.width/2, c.height*0.32);
+  }
+
+  if (!carObj.falling && !gameOver) score += Math.max(carObj.speed, 0) * 0.8;
+  fuel = Math.max(fuel, 0);
+  
+  document.getElementById("fuel").innerText = fuel.toFixed(0);
+  document.getElementById("score").innerText = Math.floor(score);
+  document.getElementById("coins").innerText = totalCoins;
+  
+  let dSpeed = Math.floor(carObj.speed * 10);
+  speedo.innerText = dSpeed;
+  speedo.style.color = dSpeed > SAFE_SPEED*10 ? "red" : (dSpeed > SAFE_SPEED*7 ? "orange" : "lime");
+
+  if (fuel <= 0 && !carObj.falling) endGame("OUT OF FUEL");
+
+  requestAnimationFrame(loop);
+}
+
+function endGame(reason) {
+  if (gameOver) return;
+  gameOver = true;
+  document.getElementById("gameover-title").innerText = reason;
+  document.getElementById("final-score").innerText = Math.floor(score);
+  gameoverScreen.style.display = "flex";
+  ui.style.display = "none";
+  speedo.style.display = "none";
+  heatContainer.style.display = "none";
+}
 </script>
 </body>
 </html>
